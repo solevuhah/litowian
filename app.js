@@ -7,7 +7,7 @@ function isDirectAudio(url) { try { return /\.(mp3|m4a|aac|ogg|oga|wav|flac)$/i.
 function connect(room) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   socket = new WebSocket(proto+'//'+location.host);
-  socket.onopen = () => socket.send(JSON.stringify({type:'join',room}));
+  socket.onopen = () => { socket.send(JSON.stringify({type:'join',room})); if(currentTrack) socket.send(JSON.stringify({type:'track',url:currentTrack})); };
   socket.onmessage = event => {
     const msg=JSON.parse(event.data);
     if(msg.type==='joined') { if(msg.track && !currentTrack) setTrack(msg.track,false); $('status').textContent='Комната синхронизирована'; $('members').textContent=msg.count+' в комнате'; }
