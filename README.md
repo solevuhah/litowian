@@ -2,16 +2,19 @@
 
 A Windows-hosted realtime listening room. No Supabase account or API keys.
 
-## Run on Windows 11
+## First run on Windows 11
 1. Install Node.js LTS from https://nodejs.org/ (once).
-2. Extract/download this repository to a folder.
+2. Download this repository as ZIP and extract it.
 3. Double-click `Start-litowian.bat`.
-4. Keep the terminal window open. The app opens at http://localhost:8787.
+4. On first run it installs the app dependency and Cloudflare Tunnel (using winget).
+5. Wait until the terminal shows a public HTTPS URL ending in `trycloudflare.com`.
+6. Open that HTTPS URL on your PC, create a room, and press **Invite**.
+7. Send the copied invite link. Your friend opens it and lands directly in that room.
 
-The first launch installs the small WebSocket dependency.
+Keep both terminal windows open and keep your PC awake. The public tunnel URL changes when restarted, so create a fresh invite after restarting.
 
-## Invite someone outside your home network
-The server listens on your PC. To let another person connect over the internet, you need a trusted HTTPS tunnel to port 8787. Do not expose the PC by opening router ports or sharing remote-access credentials. A local-only run works on your own device/network; an external invite link requires a tunnel URL.
+## Important
+The quick tunnel makes this app reachable from the internet. Anyone with a room invite can join that room. Share invite links only with people you trust. Do not share Windows passwords or remote-access credentials. Do not open router ports.
 
 ## Supported playback
 - SoundCloud official embed: Play/Pause/seek sync when the embed is available to both listeners.
@@ -20,4 +23,4 @@ The server listens on your PC. To let another person connect over the internet, 
 - This app does not proxy, download, or rebroadcast SoundCloud audio. A PC VPN cannot make a restricted SoundCloud stream available to another listener.
 - iOS Safari may pause playback in the background; background audio is not guaranteed.
 
-Rooms are temporary and live in server memory. Keep the PC and terminal running while listening.
+Rooms are temporary and live in server memory. Keep the PC and both terminal windows running while listening.
