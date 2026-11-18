@@ -177,6 +177,7 @@ function togglePlayback() {
 function seekBy(delta) {
   const seek = position => {
     const target = Math.max(0, Math.min(trackDuration || Infinity, position + delta));
+    markRemote('seek');
     if (player) player.seekTo(target);
     else if (audio) audio.currentTime = target / 1000;
     send({ type: 'control', action: 'seek', position: target });
@@ -195,6 +196,7 @@ $('progress').addEventListener('input', () => {
 $('progress').addEventListener('change', () => {
   const position = Number($('progress').value) / 1000 * trackDuration;
   draggingProgress = false;
+  markRemote('seek');
   if (player) player.seekTo(position);
   if (audio) audio.currentTime = position / 1000;
   send({ type: 'control', action: 'seek', position });
