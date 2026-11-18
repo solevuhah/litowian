@@ -33,12 +33,8 @@ echo Starting litowian server in another window...
 start "litowian server" cmd /k "cd /d "%~dp0" && node server.js"
 timeout /t 2 /nobreak >nul
 echo.
-echo Starting secure HTTPS tunnel.
-echo Wait for a URL ending in trycloudflare.com.
-echo Open that HTTPS URL on this PC, create a room, then press Invite.
-echo Send that invite link to your girlfriend. Keep both windows open.
-echo.
+echo Starting secure HTTPS tunnel and waiting for its public link...
 set "CF=cloudflared"
 if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\cloudflared.exe" set "CF=%LOCALAPPDATA%\Microsoft\WinGet\Links\cloudflared.exe"
-"%CF%" tunnel --url http://localhost:8787
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$out=Join-Path $env:TEMP 'litowian-cf-out.log'; $err=Join-Path $env:TEMP 'litowian-cf-err.log'; Remove-Item $out,$err -Force -ErrorAction SilentlyContinue; $p=Start-Process -FilePath '%CF%' -ArgumentList @('tunnel','--url','http://localhost:8787') -PassThru -RedirectStandardOutput $out -RedirectStandardError $err; $url=$null; for($i=0;$i -lt 60 -and -not $url;$i++){ Start-Sleep -Seconds 1; $txt=(Get-Content $out,$err -Raw -ErrorAction SilentlyContinue) -join ' '; if($txt -match 'https://[a-z0-9-]+\.trycloudflare\.com'){ $url=$Matches[0] } }; if($url){ Write-Host ('PUBLIC LINK: '+$url); Start-Process $url; Write-Host 'The public page has been opened. Create your room there and send the invite link.' } else { Write-Host 'Could not detect the public URL. Check the Cloudflare output/logs.' }; Wait-Process -Id $p.Id"
 pause
