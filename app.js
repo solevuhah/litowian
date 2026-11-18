@@ -10,10 +10,16 @@ function connect(room) {
   socket.onopen = () => { socket.send(JSON.stringify({type:'join',room})); if(currentTrack) socket.send(JSON.stringify({type:'track',url:currentTrack})); };
   socket.onmessage = event => {
     const msg=JSON.parse(event.data);
-    if(msg.type==='joined') { if(msg.track && !currentTrack) setTrack(msg.track,false); $('status').textContent='Комната синхронизирована'; $('members').textContent=msg.count+' в комнате'; }
+    if(msg.type==='joined') {
+      if(msg.track && !currentTrack) setTrack(msg.track,false);
+      $('status').textContent='Комната синхронизирована';
+      $('members').textContent=msg.count+' в комнате';
+      (msg.messages||[]).forEach(renderChatMessage);
+    }
     if(msg.type==='members') $('members').textContent=msg.count+' в комнате';
     if(msg.type==='track') setTrack(msg.url,false);
     if(msg.type==='control') applyControl(msg);
+    if(msg.type==='chat') renderChatMessage(msg);
   };
   socket.onclose=()=>{ $('status').textContent='Связь с хостом потеряна'; };
   socket.onerror=()=>{ $('status').textContent='Не удалось подключиться к серверу ПК'; };
@@ -91,5 +97,38 @@ async function shareInvite() {
   catch { $('invite-link').focus(); $('invite-link').select(); toast('Ссылка выделена — скопируй и отправь в чат'); }
 }
 $('copy').onclick=shareInvite;
+function renderChatMessage(msg) {
+  const box=$('chat-messages');
+  const empty=box.querySelector('.chat-empty'); if(empty) empty.remove();
+  const item=document.createElement('div'); item.className='chat-message';
+  const head=document.createElement('div'); head.className='chat-message-head';
+  const nick=document.createElement('strong'); nick.textContent=msg.nick;
+  const time=document.createElement('time'); time.textContent=new Date(msg.time).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  const body=document.createElement('p'); body.textContent=msg.text;
+  head.append(nick,time); item.append(head,body); box.append(item);
+  while(box.children.length>60) box.firstElementChild.remove();
+  box.scrollTop=box.scrollHeight;
+  $('chat-count').textContent=box.querySelectorAll('.chat-message').length+' сообщений';
+}
+function sendChat() {
+  const text=$('chat-input').value.trim();
+  const nick=$('nickname').value.trim().slice(0,24)||'Гость';
+  if(!text) return;
+  if(!socket||socket.readyState!==WebSocket.OPEN){toast('Нет соединения с комнатой');return;}
+  send({type:'chat',nick,text}); $('chat-input').value='';
+}
+$('chat-send').onclick=sendChat;
+$('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter')sendChat();});
+$('sc-search-btn').onclick=()=>{
+  const q=$('sc-search').value.trim();
+  if(!q){toast('Введи название трека или исполнителя');return;}
+  window.open('https://soundcloud.com/search?q='+encodeURIComponent(q),'_blank','noopener');
+};
+$('load-track').onclick=()=>{
+  const url=$('room-track-url').value.trim();
+  try { const u=new URL(url); if(!['http:','https:'].includes(u.protocol)||!isSoundCloud(url)) throw 0; }
+  catch { toast('Вставь корректную ссылку на SoundCloud');return; }
+  setTrack(url,true); $('status').textContent='Трек отправлен всем участникам';
+};
 $('leave').onclick=()=>{socket?.close();socket=null;roomId=null;currentTrack='';history.replaceState({},'',location.pathname);$('room').classList.add('hidden');$('home').classList.remove('hidden');$('sc-player').src='about:blank';$('audio-player').pause();$('audio-player').removeAttribute('src');};
 const invite=new URLSearchParams(location.search); if(invite.get('room')) enter(invite.get('room'),invite.get('track')||'');
