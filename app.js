@@ -55,12 +55,21 @@ function applyControl(msg) {
   }
   setTimeout(()=>applying=false,700);
 }
+function inviteUrl() {
+  if(location.hostname==='localhost'||location.hostname==='127.0.0.1'||location.hostname==='::1') return null;
+  const u=new URL(location.href); u.searchParams.set('room',roomId); if(currentTrack)u.searchParams.set('track',currentTrack); else u.searchParams.delete('track'); return u.href;
+}
+function refreshInvite() {
+  const url=inviteUrl();
+  const field=$('invite-link');
+  if(field) { field.value=url||'Открой сайт через публичную ссылку *.trycloudflare.com'; field.classList.toggle('local-warning',!url); }
+}
 function enter(id,track) {
   roomId=id; currentTrack=track||'';
   $('home').classList.add('hidden'); $('room').classList.remove('hidden');
   $('room-name').textContent='Комната '+id.slice(0,6).toUpperCase();
   const u=new URL(location.href); u.searchParams.set('room',id); if(track)u.searchParams.set('track',track); history.replaceState({},'',u.pathname+u.search);
-  if(track)setTrack(track,false); connect(id);
+  if(track)setTrack(track,false); refreshInvite(); connect(id);
 }
 $('create').onclick=()=>{
   const track=$('track').value.trim(); let u;
@@ -70,6 +79,6 @@ $('create').onclick=()=>{
   send({type:'track',url:track});
 };
 $('join').onclick=()=>{const value=prompt('Вставьте ссылку-приглашение');if(!value)return;try{const u=new URL(value);const id=u.searchParams.get('room');const track=u.searchParams.get('track');if(!id)throw 0;enter(id,track||'');}catch{toast('Ссылка приглашения некорректна');}};
-$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(location.href);toast('Ссылка скопирована');}catch{toast('Скопируйте адресную строку');}};
+$('copy').onclick=async()=>{const url=inviteUrl();if(!url){toast('Сначала открой litowian по HTTPS-ссылке trycloudflare.com');return;}refreshInvite();try{await navigator.clipboard.writeText(url);toast('Приглашение скопировано — отправь его в чат');}catch{$('invite-link').focus();$('invite-link').select();toast('Ссылка выделена — скопируй её');}};
 $('leave').onclick=()=>{socket?.close();socket=null;roomId=null;currentTrack='';history.replaceState({},'',location.pathname);$('room').classList.add('hidden');$('home').classList.remove('hidden');$('sc-player').src='about:blank';$('audio-player').pause();$('audio-player').removeAttribute('src');};
 const invite=new URLSearchParams(location.search); if(invite.get('room')) enter(invite.get('room'),invite.get('track')||'');
