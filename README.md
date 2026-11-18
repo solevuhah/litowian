@@ -1,19 +1,23 @@
 # litowian
 
-A shared listening room for SoundCloud embeds and direct audio-file URLs.
+A Windows-hosted realtime listening room. No Supabase account or API keys.
 
-## Deploy
-GitHub Actions publishes the static site to GitHub Pages. In repository Settings → Pages, set **Source** to **GitHub Actions**. Site URL: https://solevuhah.github.io/litowian/
+## Run on Windows 11
+1. Install Node.js LTS from https://nodejs.org/ (once).
+2. Extract/download this repository to a folder.
+3. Double-click `Start-litowian.bat`.
+4. Keep the terminal window open. The app opens at http://localhost:8787.
 
-## Realtime setup
-The app uses Supabase Realtime Broadcast. Create a free project at https://supabase.com, then copy the Project URL and anon/publishable key from Project Settings → API. Open litowian, tap ⚙ and save both values on each device/browser. Never use a service_role key.
+The first launch installs the small WebSocket dependency.
 
-Enable Realtime for Broadcast in the Supabase project. Rooms use random channel names and ephemeral broadcasts; no user account or room database is required.
+## Invite someone outside your home network
+The server listens on your PC. To let another person connect over the internet, you need a trusted HTTPS tunnel to port 8787. Do not expose the PC by opening router ports or sharing remote-access credentials. A local-only run works on your own device/network; an external invite link requires a tunnel URL.
 
-## Music sources
-- Public SoundCloud URLs work only where SoundCloud itself is reachable and allows the embed.
-- To listen without relying on SoundCloud access, use a direct HTTPS URL to an audio file (MP3, M4A, AAC, OGG, WAV, or FLAC) hosted on a service reachable by both listeners. A normal webpage or SoundCloud track page is not a direct audio-file URL.
-- Only share audio you own or have permission to distribute. This app does not download or proxy SoundCloud tracks.
-- Both listeners need the same Supabase project configured once.
-- This is a prototype: playback synchronization is approximate, not millisecond-perfect.
-- iOS Safari may suspend web audio when backgrounded, switching apps/games, or locking the screen. Background playback is not guaranteed by a website.
+## Supported playback
+- SoundCloud official embed: Play/Pause/seek sync when the embed is available to both listeners.
+- Direct audio file URLs: Play/Pause/seek sync. Only use files you own or have permission to share.
+- Other service URLs are passed as links but do not currently offer shared playback control.
+- This app does not proxy, download, or rebroadcast SoundCloud audio. A PC VPN cannot make a restricted SoundCloud stream available to another listener.
+- iOS Safari may pause playback in the background; background audio is not guaranteed.
+
+Rooms are temporary and live in server memory. Keep the PC and terminal running while listening.
