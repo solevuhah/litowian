@@ -1,13 +1,15 @@
 const $ = id => document.getElementById(id);
 let socket = null, roomId = null, player = null, audio = null, currentTrack = '';
 let trackDuration = 0, currentPosition = 0, draggingProgress = false, isPlaying = false;
+let pendingPlayback = null;
 const remoteEcho = Object.create(null);
 
 function toast(message) {
   $('toast').textContent = message;
   $('toast').classList.add('show');
-  setTimeout(() => $('toast').classList.remove('show'), 2400);
+  setTimeout(() => $('toast').classList.remove('show'), 2600);
 }
+function status(message) { $('status').textContent = message; }
 function isSoundCloud(url) {
   try { const h = new URL(url).hostname.toLowerCase(); return h === 'soundcloud.com' || h.endsWith('.soundcloud.com'); }
   catch { return false; }
@@ -16,7 +18,7 @@ function isDirectAudio(url) {
   try { return /\.(mp3|m4a|aac|ogg|oga|wav|flac)$/i.test(new URL(url).pathname); }
   catch { return false; }
 }
-function markRemote(action) { remoteEcho[action] = Date.now() + 2500; }
+function markRemote(action) { remoteEcho[action] = Date.now() + 1800; }
 function consumeRemote(action) {
   if ((remoteEcho[action] || 0) >= Date.now()) { delete remoteEcho[action]; return true; }
   delete remoteEcho[action];
@@ -29,24 +31,25 @@ function connect(room) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   socket = new WebSocket(proto + '//' + location.host);
   socket.onopen = () => {
-    socket.send(JSON.stringify({ type: 'join', room }));
-    if (currentTrack) socket.send(JSON.stringify({ type: 'track', url: currentTrack }));
+    send({ type: 'join', room });
+    if (currentTrack) send({ type: 'track', url: currentTrack });
   };
   socket.onmessage = event => {
     const msg = JSON.parse(event.data);
     if (msg.type === 'joined') {
-      if (msg.track && !currentTrack) setTrack(msg.track, false);
-      $('status').textContent = 'Комната синхронизирована';
+      if (msg.track && msg.track !== currentTrack) setTrack(msg.track, false);
+      status('Комната синхронизирована');
       $('members').textContent = msg.count + ' в комнате';
       (msg.messages || []).forEach(renderChatMessage);
+      if (msg.playback && msg.playback.action) applyControl(msg.playback, true);
     }
     if (msg.type === 'members') $('members').textContent = msg.count + ' в комнате';
     if (msg.type === 'track') setTrack(msg.url, false);
-    if (msg.type === 'control') applyControl(msg);
+    if (msg.type === 'control') applyControl(msg, true);
     if (msg.type === 'chat') renderChatMessage(msg);
   };
-  socket.onclose = () => { $('status').textContent = 'Связь с хостом потеряна'; };
-  socket.onerror = () => { $('status').textContent = 'Не удалось подключиться к серверу ПК'; };
+  socket.onclose = () => status('Связь с хостом потеряна');
+  socket.onerror = () => status('Не удалось подключиться к серверу ПК');
 }
 function formatTime(ms) {
   const total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
@@ -55,8 +58,7 @@ function formatTime(ms) {
 function updateProgress(position, duration) {
   if (Number.isFinite(duration) && duration > 0) trackDuration = duration;
   if (Number.isFinite(position) && position >= 0) currentPosition = position;
-  const max = trackDuration || 1;
-  if (!draggingProgress) $('progress').value = String(Math.min(1000, currentPosition / max * 1000));
+  if (!draggingProgress) $('progress').value = String(Math.min(1000, currentPosition / (trackDuration || 1) * 1000));
   $('elapsed').textContent = formatTime(currentPosition);
   $('duration').textContent = formatTime(trackDuration);
 }
@@ -64,106 +66,152 @@ function setTrackInfo(sound) {
   if (!sound) return;
   $('track-title').textContent = sound.title || 'Без названия';
   $('track-artist').textContent = sound.user?.username || 'SoundCloud';
-  if (sound.artwork_url) $('track-art').src = sound.artwork_url;
+  const art = sound.artwork_url || sound.user?.avatar_url;
+  if (art) $('track-art').src = art.replace('-large.', '-t500x500.');
   else $('track-art').removeAttribute('src');
   if (sound.permalink_url) $('soundcloud-source').href = sound.permalink_url;
+  if (sound.duration) updateProgress(0, sound.duration);
+}
+function sendPlayback(action, position) {
+  const data = { type: 'control', action };
+  if (Number.isFinite(position)) data.position = Math.max(0, position);
+  send(data);
 }
 function setTrack(url, announce = true) {
   currentTrack = url;
   player = null;
   audio = null;
+  pendingPlayback = null;
   trackDuration = 0;
   currentPosition = 0;
   isPlaying = false;
   $('player-placeholder').classList.add('hidden');
   $('link-player').classList.add('hidden');
   $('custom-player').classList.add('hidden');
-  $('sc-player').src = 'about:blank';
-  $('audio-player').pause();
-  $('audio-player').removeAttribute('src');
-  $('audio-player').load();
+  const frame = $('sc-player');
+  frame.onload = null;
+  frame.src = 'about:blank';
+  const oldAudio = $('audio-player');
+  oldAudio.pause();
+  oldAudio.removeAttribute('src');
+  oldAudio.load();
   $('track-title').textContent = 'Загрузка трека…';
-  $('track-artist').textContent = ' ';
+  $('track-artist').textContent = '';
   $('track-art').removeAttribute('src');
+  $('play-toggle').textContent = '▶';
   updateProgress(0, 0);
-  $('play-toggle').textContent = 'Ⅱ';
   if (announce) send({ type: 'track', url });
 
   if (isSoundCloud(url)) {
     $('custom-player').classList.remove('hidden');
-    $('status').textContent = 'Загрузка SoundCloud…';
-    const frame = $('sc-player');
-    frame.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(url) +
-      '&auto_play=false&hide_related=true&show_comments=false&show_user=true&visual=false&buying=false&sharing=false&download=false';
+    status('Загружаем официальный SoundCloud-плеер…');
     frame.onload = () => {
-      if (currentTrack !== url || !window.SC?.Widget) return;
+      if (currentTrack !== url || !window.SC?.Widget) {
+        if (!window.SC?.Widget) status('Не загрузился API SoundCloud. Проверьте подключение к интернету.');
+        return;
+      }
       const widget = SC.Widget(frame);
       player = widget;
       widget.bind(SC.Widget.Events.READY, () => {
         if (player !== widget || currentTrack !== url) return;
-        widget.getCurrentSound(setTrackInfo);
-        widget.getDuration(duration => { if (player === widget) updateProgress(currentPosition, duration); });
-        widget.getPosition(position => { if (player === widget) updateProgress(position, trackDuration); });
+        widget.bind(SC.Widget.Events.ERROR, event => {
+          if (player === widget) status('SoundCloud не разрешил воспроизвести этот трек.');
+        });
         widget.bind(SC.Widget.Events.PLAY, () => {
           if (player !== widget) return;
           isPlaying = true;
           $('play-toggle').textContent = 'Ⅱ';
-          if (!consumeRemote('play')) send({ type: 'control', action: 'play' });
+          if (!consumeRemote('play')) widget.getPosition(pos => sendPlayback('play', Number(pos) || 0));
         });
         widget.bind(SC.Widget.Events.PAUSE, () => {
           if (player !== widget) return;
           isPlaying = false;
           $('play-toggle').textContent = '▶';
-          if (!consumeRemote('pause')) send({ type: 'control', action: 'pause' });
+          if (!consumeRemote('pause')) widget.getPosition(pos => sendPlayback('pause', Number(pos) || 0));
         });
         widget.bind(SC.Widget.Events.PLAY_PROGRESS, event => {
           if (player === widget && event) updateProgress(event.currentPosition, trackDuration);
         });
         widget.bind(SC.Widget.Events.SEEK, event => {
           if (player !== widget) return;
-          const position = Number(event?.currentPosition) || 0;
-          updateProgress(position, trackDuration);
-          if (!consumeRemote('seek')) send({ type: 'control', action: 'seek', position });
+          const pos = Number(event?.currentPosition) || 0;
+          updateProgress(pos, trackDuration);
+          if (!consumeRemote('seek')) sendPlayback('seek', pos);
         });
         widget.bind(SC.Widget.Events.FINISH, () => {
-          if (player === widget) $('play-toggle').textContent = '▶';
+          if (player === widget) { isPlaying = false; $('play-toggle').textContent = '▶'; }
         });
-        $('status').textContent = 'Плеер готов';
+        widget.getCurrentSound(setTrackInfo);
+        widget.getDuration(duration => { if (player === widget) updateProgress(currentPosition, duration); });
+        widget.getPosition(position => { if (player === widget) updateProgress(position, trackDuration); });
+        status('SoundCloud готов. Нажмите Play для начала.');
+        if (pendingPlayback) {
+          const queued = pendingPlayback;
+          pendingPlayback = null;
+          applyControl(queued, false);
+        }
       });
     };
+    frame.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(url) +
+      '&auto_play=false&hide_related=true&show_comments=false&show_user=true&visual=false&buying=false&sharing=false&download=false';
   } else if (isDirectAudio(url)) {
     $('custom-player').classList.remove('hidden');
-    audio = $('audio-player');
+    audio = oldAudio;
     audio.src = url;
-    $('track-title').textContent = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'Аудиофайл');
+    try { $('track-title').textContent = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'Аудиофайл'); }
+    catch { $('track-title').textContent = 'Аудиофайл'; }
     $('track-artist').textContent = 'Прямой аудиофайл';
     audio.onloadedmetadata = () => updateProgress(0, audio.duration * 1000);
     audio.ontimeupdate = () => updateProgress(audio.currentTime * 1000, audio.duration * 1000);
-    audio.onplay = () => { isPlaying = true; $('play-toggle').textContent = 'Ⅱ'; if (!consumeRemote('play')) send({ type: 'control', action: 'play' }); };
-    audio.onpause = () => { isPlaying = false; $('play-toggle').textContent = '▶'; if (!consumeRemote('pause')) send({ type: 'control', action: 'pause' }); };
-    audio.onseeked = () => { if (!consumeRemote('seek')) send({ type: 'control', action: 'seek', position: audio.currentTime * 1000 }); };
-    audio.onerror = () => $('status').textContent = 'Аудиофайл недоступен в этом браузере.';
-    $('status').textContent = 'Аудиофайл готов';
+    audio.onplay = () => { isPlaying = true; $('play-toggle').textContent = 'Ⅱ'; if (!consumeRemote('play')) sendPlayback('play', audio.currentTime * 1000); };
+    audio.onpause = () => { isPlaying = false; $('play-toggle').textContent = '▶'; if (!consumeRemote('pause')) sendPlayback('pause', audio.currentTime * 1000); };
+    audio.onseeked = () => { if (!consumeRemote('seek')) sendPlayback('seek', audio.currentTime * 1000); };
+    audio.onerror = () => status('Аудиофайл недоступен или запрещён сервером.');
+    status('Аудиофайл загружается…');
   } else {
     $('link-player').classList.remove('hidden');
     $('open-track').href = url;
-    $('status').textContent = 'Для этой ссылки нет совместимого встроенного плеера.';
+    status('Эта ссылка не является поддерживаемым аудиотреком.');
   }
 }
-function applyControl(msg) {
+function applyControl(msg, fromServer = false) {
   if (!['play', 'pause', 'seek'].includes(msg.action)) return;
-  if (player) {
-    if (msg.action === 'play' || msg.action === 'pause') markRemote(msg.action);
-    if (msg.action === 'seek') markRemote('seek');
-    if (msg.action === 'play') player.play();
-    if (msg.action === 'pause') player.pause();
-    if (msg.action === 'seek') player.seekTo(Math.max(0, Number(msg.position) || 0));
+  if (!player && !audio) {
+    pendingPlayback = msg;
+    return;
   }
-  if (audio) {
-    if (msg.action === 'play' || msg.action === 'pause') markRemote(msg.action);
-    if (msg.action === 'play') audio.play().catch(() => toast('Нажмите Play на этом устройстве, чтобы разрешить звук.'));
-    if (msg.action === 'pause') audio.pause();
-    if (msg.action === 'seek') { markRemote('seek'); audio.currentTime = Math.max(0, Number(msg.position) || 0) / 1000; }
+  let position = Math.max(0, Number(msg.position) || 0);
+  if (msg.action === 'play' && Number.isFinite(Number(msg.updatedAt))) {
+    position += Math.max(0, Date.now() - Number(msg.updatedAt));
+  }
+  if (player) {
+    if (msg.action === 'seek') {
+      markRemote('seek');
+      player.seekTo(position);
+    } else if (msg.action === 'pause') {
+      markRemote('pause');
+      if (Number.isFinite(Number(msg.position))) player.seekTo(position);
+      player.pause();
+      isPlaying = false;
+      $('play-toggle').textContent = '▶';
+    } else if (msg.action === 'play') {
+      markRemote('play');
+      player.seekTo(position);
+      player.play();
+    }
+  } else if (audio) {
+    if (msg.action === 'seek') {
+      markRemote('seek');
+      audio.currentTime = position / 1000;
+    } else if (msg.action === 'pause') {
+      markRemote('pause');
+      if (Number.isFinite(Number(msg.position))) audio.currentTime = position / 1000;
+      audio.pause();
+    } else if (msg.action === 'play') {
+      markRemote('play');
+      audio.currentTime = position / 1000;
+      audio.play().catch(() => toast('На этом устройстве нажмите Play один раз: браузер блокирует удалённый автозапуск.'));
+    }
   }
 }
 function togglePlayback() {
@@ -175,32 +223,28 @@ function togglePlayback() {
     else audio.pause();
   }
 }
+function seekToPosition(position) {
+  const target = Math.max(0, Math.min(trackDuration || Infinity, position));
+  markRemote('seek');
+  if (player) player.seekTo(target);
+  else if (audio) audio.currentTime = target / 1000;
+  sendPlayback('seek', target);
+}
 function seekBy(delta) {
-  const seek = position => {
-    const target = Math.max(0, Math.min(trackDuration || Infinity, position + delta));
-    markRemote('seek');
-    if (player) player.seekTo(target);
-    else if (audio) audio.currentTime = target / 1000;
-    send({ type: 'control', action: 'seek', position: target });
-  };
-  if (player) player.getPosition(position => seek(Number(position) || 0));
-  else if (audio) seek(audio.currentTime * 1000);
+  if (player) player.getPosition(pos => seekToPosition((Number(pos) || 0) + delta));
+  else if (audio) seekToPosition(audio.currentTime * 1000 + delta);
 }
 $('play-toggle').onclick = togglePlayback;
 $('backward').onclick = () => seekBy(-10000);
 $('forward').onclick = () => seekBy(10000);
 $('progress').addEventListener('input', () => {
   draggingProgress = true;
-  const position = Number($('progress').value) / 1000 * trackDuration;
-  $('elapsed').textContent = formatTime(position);
+  $('elapsed').textContent = formatTime(Number($('progress').value) / 1000 * trackDuration);
 });
 $('progress').addEventListener('change', () => {
   const position = Number($('progress').value) / 1000 * trackDuration;
   draggingProgress = false;
-  markRemote('seek');
-  if (player) player.seekTo(position);
-  if (audio) audio.currentTime = position / 1000;
-  send({ type: 'control', action: 'seek', position });
+  seekToPosition(position);
 });
 
 function inviteUrl() {
