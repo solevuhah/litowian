@@ -1,5 +1,8 @@
 const $ = id => document.getElementById(id);
-let socket = null, roomId = null, player = null, audio = null, applying = false, currentTrack = '';
+let socket = null, roomId = null, player = null, audio = null, currentTrack = '';
+const suppressEcho = Object.create(null);
+function markRemote(action) { suppressEcho[action] = Date.now() + 1800; }
+function isRemoteEcho(action) { if ((suppressEcho[action] || 0) > Date.now()) { delete suppressEcho[action]; return true; } delete suppressEcho[action]; return false; }
 function toast(message) { $('toast').textContent=message; $('toast').classList.add('show'); setTimeout(()=>$('toast').classList.remove('show'),2400); }
 function isSoundCloud(url) { try { const h=new URL(url).hostname.toLowerCase(); return h==='soundcloud.com'||h.endsWith('.soundcloud.com'); } catch { return false; } }
 function isDirectAudio(url) { try { return /\.(mp3|m4a|aac|ogg|oga|wav|flac)$/i.test(new URL(url).pathname); } catch { return false; } }
@@ -33,26 +36,27 @@ function setTrack(url, announce=true) {
   if(isSoundCloud(url)) {
     const frame=$('sc-player'); frame.style.display='block';
     frame.src='https://w.soundcloud.com/player/?url='+encodeURIComponent(url)+'&auto_play=false&hide_related=true&show_comments=false&show_user=true&visual=true';
-    const widget=SC.Widget(frame);
-    player=widget;
-    const relay=(action,position)=>{
-      if(player!==widget) return;
-      if(applying){ applying=false; return; }
-      send(position===undefined ? {type:'control',action} : {type:'control',action,position});
+    frame.onload=()=>{
+      const widget=SC.Widget(frame);
+      player=widget;
+      const relay=(action,position)=>{
+        if(player!==widget || isRemoteEcho(action)) return;
+        send(position===undefined ? {type:'control',action} : {type:'control',action,position});
+      };
+      widget.bind(SC.Widget.Events.READY,()=>{
+        if(player!==widget) return;
+        widget.bind(SC.Widget.Events.PLAY,()=>relay('play'));
+        widget.bind(SC.Widget.Events.PAUSE,()=>relay('pause'));
+        widget.bind(SC.Widget.Events.SEEK,event=>relay('seek',event?.currentPosition));
+        widget.bind(SC.Widget.Events.FINISH,()=>relay('pause'));
+        $('status').textContent='SoundCloud плеер готов';
+      });
     };
-    widget.bind(SC.Widget.Events.READY,()=>{
-      if(player!==widget) return;
-      widget.bind(SC.Widget.Events.PLAY,()=>relay('play'));
-      widget.bind(SC.Widget.Events.PAUSE,()=>relay('pause'));
-      widget.bind(SC.Widget.Events.SEEK,event=>relay('seek',event?.currentPosition));
-      widget.bind(SC.Widget.Events.FINISH,()=>relay('pause'));
-      $('status').textContent='SoundCloud плеер готов';
-    });
   } else if(isDirectAudio(url)) {
     audio=$('audio-player'); audio.style.display='block'; audio.src=url;
-    audio.onplay=()=>{if(!applying)send({type:'control',action:'play'});};
-    audio.onpause=()=>{if(!applying)send({type:'control',action:'pause'});};
-    audio.onseeked=()=>{if(!applying)send({type:'control',action:'seek',position:audio.currentTime*1000});};
+    audio.onplay=()=>{if(!isRemoteEcho('play'))send({type:'control',action:'play'});};
+    audio.onpause=()=>{if(!isRemoteEcho('pause'))send({type:'control',action:'pause'});};
+    audio.onseeked=()=>{if(!isRemoteEcho('seek'))send({type:'control',action:'seek',position:audio.currentTime*1000});};
     audio.onerror=()=>$('status').textContent='Аудиофайл недоступен в этом браузере.';
     audio.oncanplay=()=>$('status').textContent='Аудиофайл готов';
   } else {
@@ -61,18 +65,18 @@ function setTrack(url, announce=true) {
   }
 }
 function applyControl(msg) {
-  applying=true;
+  if(!['play','pause','seek'].includes(msg.action)) return;
+  markRemote(msg.action);
   if(player) {
     if(msg.action==='play') player.play();
     if(msg.action==='pause') player.pause();
-    if(msg.action==='seek') player.seekTo(msg.position);
+    if(msg.action==='seek') player.seekTo(Math.max(0,Number(msg.position)||0));
   }
   if(audio) {
     if(msg.action==='play') audio.play().catch(()=>toast('Нажмите Play, чтобы разрешить воспроизведение.'));
     if(msg.action==='pause') audio.pause();
-    if(msg.action==='seek') audio.currentTime=msg.position/1000;
+    if(msg.action==='seek') audio.currentTime=Math.max(0,Number(msg.position)||0)/1000;
   }
-  setTimeout(()=>{applying=false;},1200);
 }
 function inviteUrl() {
   if(location.hostname==='localhost'||location.hostname==='127.0.0.1'||location.hostname==='::1') return null;
