@@ -32,12 +32,12 @@ function connect(room) {
   socket = new WebSocket(proto + '//' + location.host);
   socket.onopen = () => {
     send({ type: 'join', room });
-    if (currentTrack) send({ type: 'track', url: currentTrack });
   };
   socket.onmessage = event => {
     const msg = JSON.parse(event.data);
     if (msg.type === 'joined') {
       if (msg.track && msg.track !== currentTrack) setTrack(msg.track, false);
+      else if (!msg.track && currentTrack) send({ type: 'track', url: currentTrack });
       status('Комната синхронизирована');
       $('members').textContent = msg.count + ' в комнате';
       (msg.messages || []).forEach(renderChatMessage);
