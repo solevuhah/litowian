@@ -77,13 +77,13 @@ function bindWidgetEvents(widget, url) {
       });
     });
     widget.bind(E.PAUSE, () => {
-      if (player !== widget || consumeRemote('play')) return;
+      if (player !== widget || consumeRemote('pause')) return;
       widget.getPosition(position => {
         if (player === widget) sendWidgetControl('pause', Number(position) || 0);
       });
     });
     widget.bind(E.SEEK, event => {
-      if (player !== widget || consumeRemote('play')) return;
+      if (player !== widget || consumeRemote('seek')) return;
       sendWidgetControl('seek', Number(event?.currentPosition) || 0);
     });
     widget.bind(E.ERROR, () => {
@@ -126,7 +126,7 @@ function setTrack(url, announce = true) {
     audio.src = url;
     audio.onplay = () => { if (!consumeRemote('play')) sendWidgetControl('play', audio.currentTime * 1000); };
     audio.onpause = () => { if (!consumeRemote('pause')) sendWidgetControl('pause', audio.currentTime * 1000); };
-    audio.onseeked = () => { if (!consumeRemote('play')) sendWidgetControl('seek', audio.currentTime * 1000); };
+    audio.onseeked = () => { if (!consumeRemote('seek')) sendWidgetControl('seek', audio.currentTime * 1000); };
     audio.onerror = () => $('status').textContent = 'Аудиофайл недоступен в этом браузере.';
     audio.oncanplay = () => $('status').textContent = 'Аудиофайл готов';
   } else {
