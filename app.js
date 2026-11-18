@@ -90,21 +90,21 @@ function makePlayer(url) {
 
   audioPlayer = audio;
   audio.style.display = 'block';
-  audio.src = url;
-  audio.load();
-  audio.addEventListener('play', () => send({ type: 'play' }));
-  audio.addEventListener('pause', () => send({ type: 'pause' }));
-  audio.addEventListener('seeked', () => {
+  audio.onplay = () => send({ type: 'play' });
+  audio.onpause = () => send({ type: 'pause' });
+  audio.onseeked = () => {
     if (!isApplying && Number.isFinite(audio.currentTime)) {
       send({ type: 'seek', position: audio.currentTime * 1000 });
     }
-  });
-  audio.addEventListener('canplay', () => {
+  };
+  audio.oncanplay = () => {
     $('status').textContent = 'Аудиофайл готов · управление общее';
-  }, { once: true });
-  audio.addEventListener('error', () => {
+  };
+  audio.onerror = () => {
     $('status').textContent = 'Не удалось загрузить аудио. Нужна прямая ссылка на доступный аудиофайл.';
-  }, { once: true });
+  };
+  audio.src = url;
+  audio.load();
 }
 
 function send(payload) {
