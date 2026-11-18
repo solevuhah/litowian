@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 let socket = null, roomId = null, player = null, audio = null, currentTrack = '';
-let trackDuration = 0, currentPosition = 0, draggingProgress = false;
+let trackDuration = 0, currentPosition = 0, draggingProgress = false, isPlaying = false;
 const remoteEcho = Object.create(null);
 
 function toast(message) {
@@ -74,6 +74,7 @@ function setTrack(url, announce = true) {
   audio = null;
   trackDuration = 0;
   currentPosition = 0;
+  isPlaying = false;
   $('player-placeholder').classList.add('hidden');
   $('link-player').classList.add('hidden');
   $('custom-player').classList.add('hidden');
@@ -105,11 +106,13 @@ function setTrack(url, announce = true) {
         widget.getPosition(position => { if (player === widget) updateProgress(position, trackDuration); });
         widget.bind(SC.Widget.Events.PLAY, () => {
           if (player !== widget) return;
+          isPlaying = true;
           $('play-toggle').textContent = 'Ⅱ';
           if (!consumeRemote('play')) send({ type: 'control', action: 'play' });
         });
         widget.bind(SC.Widget.Events.PAUSE, () => {
           if (player !== widget) return;
+          isPlaying = false;
           $('play-toggle').textContent = '▶';
           if (!consumeRemote('pause')) send({ type: 'control', action: 'pause' });
         });
@@ -136,8 +139,8 @@ function setTrack(url, announce = true) {
     $('track-artist').textContent = 'Прямой аудиофайл';
     audio.onloadedmetadata = () => updateProgress(0, audio.duration * 1000);
     audio.ontimeupdate = () => updateProgress(audio.currentTime * 1000, audio.duration * 1000);
-    audio.onplay = () => { $('play-toggle').textContent = 'Ⅱ'; if (!consumeRemote('play')) send({ type: 'control', action: 'play' }); };
-    audio.onpause = () => { $('play-toggle').textContent = '▶'; if (!consumeRemote('pause')) send({ type: 'control', action: 'pause' }); };
+    audio.onplay = () => { isPlaying = true; $('play-toggle').textContent = 'Ⅱ'; if (!consumeRemote('play')) send({ type: 'control', action: 'play' }); };
+    audio.onpause = () => { isPlaying = false; $('play-toggle').textContent = '▶'; if (!consumeRemote('pause')) send({ type: 'control', action: 'pause' }); };
     audio.onseeked = () => { if (!consumeRemote('seek')) send({ type: 'control', action: 'seek', position: audio.currentTime * 1000 }); };
     audio.onerror = () => $('status').textContent = 'Аудиофайл недоступен в этом браузере.';
     $('status').textContent = 'Аудиофайл готов';
@@ -165,10 +168,8 @@ function applyControl(msg) {
 }
 function togglePlayback() {
   if (player) {
-    player.isPaused(paused => {
-      if (player && paused) player.play();
-      else if (player) player.pause();
-    });
+    if (isPlaying) player.pause();
+    else player.play();
   } else if (audio) {
     if (audio.paused) audio.play().catch(() => toast('Браузер не разрешил воспроизведение.'));
     else audio.pause();
