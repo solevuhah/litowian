@@ -79,6 +79,17 @@ $('create').onclick=()=>{
   send({type:'track',url:track});
 };
 $('join').onclick=()=>{const value=prompt('Вставьте ссылку-приглашение');if(!value)return;try{const u=new URL(value);const id=u.searchParams.get('room');const track=u.searchParams.get('track');if(!id)throw 0;enter(id,track||'');}catch{toast('Ссылка приглашения некорректна');}};
-$('copy').onclick=async()=>{const url=inviteUrl();if(!url){toast('Сначала открой litowian по HTTPS-ссылке trycloudflare.com');return;}refreshInvite();try{await navigator.clipboard.writeText(url);toast('Приглашение скопировано — отправь его в чат');}catch{$('invite-link').focus();$('invite-link').select();toast('Ссылка выделена — скопируй её');}};
+async function shareInvite() {
+  const url=inviteUrl();
+  if(!url){toast('Открой комнату по публичной HTTPS-ссылке, не через localhost');return;}
+  refreshInvite();
+  if(navigator.share) {
+    try { await navigator.share({title:'Приглашение в litowian',text:'Заходи слушать музыку вместе:',url}); return; }
+    catch(e) { if(e.name==='AbortError') return; }
+  }
+  try { await navigator.clipboard.writeText(url); toast('Ссылка скопирована — вставь её в чат'); }
+  catch { $('invite-link').focus(); $('invite-link').select(); toast('Ссылка выделена — скопируй и отправь в чат'); }
+}
+$('copy').onclick=shareInvite;
 $('leave').onclick=()=>{socket?.close();socket=null;roomId=null;currentTrack='';history.replaceState({},'',location.pathname);$('room').classList.add('hidden');$('home').classList.remove('hidden');$('sc-player').src='about:blank';$('audio-player').pause();$('audio-player').removeAttribute('src');};
 const invite=new URLSearchParams(location.search); if(invite.get('room')) enter(invite.get('room'),invite.get('track')||'');
