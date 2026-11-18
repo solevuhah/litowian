@@ -38,5 +38,7 @@ echo Wait for a URL ending in trycloudflare.com.
 echo Open that HTTPS URL on this PC, create a room, then press Invite.
 echo Send that invite link to your girlfriend. Keep both windows open.
 echo.
-cloudflared tunnel --url http://localhost:8787
+set "CF=cloudflared"
+if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\cloudflared.exe" set "CF=%LOCALAPPDATA%\Microsoft\WinGet\Links\cloudflared.exe"
+"%CF%" tunnel --url http://localhost:8787
 pause
