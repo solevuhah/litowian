@@ -89,7 +89,6 @@ function setTrack(url, announce = true) {
   $('link-player').classList.add('hidden');
   $('custom-player').classList.add('hidden');
   const frame = $('sc-player');
-  frame.onload = null;
   frame.src = 'about:blank';
   const oldAudio = $('audio-player');
   oldAudio.pause();
@@ -105,55 +104,56 @@ function setTrack(url, announce = true) {
   if (isSoundCloud(url)) {
     $('custom-player').classList.remove('hidden');
     status('Загружаем официальный SoundCloud-плеер…');
-    frame.onload = () => {
-      if (currentTrack !== url || !window.SC?.Widget) {
-        if (!window.SC?.Widget) status('Не загрузился API SoundCloud. Проверьте подключение к интернету.');
-        return;
-      }
-      const widget = SC.Widget(frame);
-      player = widget;
-      widget.bind(SC.Widget.Events.READY, () => {
-        if (player !== widget || currentTrack !== url) return;
-        widget.bind(SC.Widget.Events.ERROR, event => {
-          if (player === widget) status('SoundCloud не разрешил воспроизвести этот трек.');
-        });
-        widget.bind(SC.Widget.Events.PLAY, () => {
-          if (player !== widget) return;
-          isPlaying = true;
-          $('play-toggle').textContent = 'Ⅱ';
-          if (!consumeRemote('play')) widget.getPosition(pos => sendPlayback('play', Number(pos) || 0));
-        });
-        widget.bind(SC.Widget.Events.PAUSE, () => {
-          if (player !== widget) return;
-          isPlaying = false;
-          $('play-toggle').textContent = '▶';
-          if (!consumeRemote('pause')) widget.getPosition(pos => sendPlayback('pause', Number(pos) || 0));
-        });
-        widget.bind(SC.Widget.Events.PLAY_PROGRESS, event => {
-          if (player === widget && event) updateProgress(event.currentPosition, trackDuration);
-        });
-        widget.bind(SC.Widget.Events.SEEK, event => {
-          if (player !== widget) return;
-          const pos = Number(event?.currentPosition) || 0;
-          updateProgress(pos, trackDuration);
-          if (!consumeRemote('seek')) sendPlayback('seek', pos);
-        });
-        widget.bind(SC.Widget.Events.FINISH, () => {
-          if (player === widget) { isPlaying = false; $('play-toggle').textContent = '▶'; }
-        });
-        widget.getCurrentSound(setTrackInfo);
-        widget.getDuration(duration => { if (player === widget) updateProgress(currentPosition, duration); });
-        widget.getPosition(position => { if (player === widget) updateProgress(position, trackDuration); });
-        status('SoundCloud готов. Нажмите Play для начала.');
-        if (pendingPlayback) {
-          const queued = pendingPlayback;
-          pendingPlayback = null;
-          applyControl(queued, false);
-        }
-      });
-    };
     frame.src = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(url) +
       '&auto_play=false&hide_related=true&show_comments=false&show_user=true&visual=false&buying=false&sharing=false&download=false';
+
+    // Attach the Widget API immediately after setting src. Waiting for iframe.onload
+    // can miss the widget READY message on some browsers.
+    if (!window.SC?.Widget) {
+      status('Не загрузился API SoundCloud. Проверьте подключение к интернету.');
+      return;
+    }
+    const widget = SC.Widget(frame);
+    player = widget;
+    widget.bind(SC.Widget.Events.READY, () => {
+      if (player !== widget || currentTrack !== url) return;
+      widget.bind(SC.Widget.Events.ERROR, () => {
+        if (player === widget) status('SoundCloud не разрешил воспроизвести этот трек.');
+      });
+      widget.bind(SC.Widget.Events.PLAY, () => {
+        if (player !== widget) return;
+        isPlaying = true;
+        $('play-toggle').textContent = 'Ⅱ';
+        if (!consumeRemote('play')) widget.getPosition(pos => sendPlayback('play', Number(pos) || 0));
+      });
+      widget.bind(SC.Widget.Events.PAUSE, () => {
+        if (player !== widget) return;
+        isPlaying = false;
+        $('play-toggle').textContent = '▶';
+        if (!consumeRemote('pause')) widget.getPosition(pos => sendPlayback('pause', Number(pos) || 0));
+      });
+      widget.bind(SC.Widget.Events.PLAY_PROGRESS, event => {
+        if (player === widget && event) updateProgress(event.currentPosition, trackDuration);
+      });
+      widget.bind(SC.Widget.Events.SEEK, event => {
+        if (player !== widget) return;
+        const pos = Number(event?.currentPosition) || 0;
+        updateProgress(pos, trackDuration);
+        if (!consumeRemote('seek')) sendPlayback('seek', pos);
+      });
+      widget.bind(SC.Widget.Events.FINISH, () => {
+        if (player === widget) { isPlaying = false; $('play-toggle').textContent = '▶'; }
+      });
+      widget.getCurrentSound(setTrackInfo);
+      widget.getDuration(duration => { if (player === widget) updateProgress(currentPosition, duration); });
+      widget.getPosition(position => { if (player === widget) updateProgress(position, trackDuration); });
+      status('SoundCloud готов. Нажмите Play для начала.');
+      if (pendingPlayback) {
+        const queued = pendingPlayback;
+        pendingPlayback = null;
+        applyControl(queued, false);
+      }
+    });
   } else if (isDirectAudio(url)) {
     $('custom-player').classList.remove('hidden');
     audio = oldAudio;
