@@ -164,12 +164,12 @@ function applyControl(msg, initial = false) {
       audio.currentTime = position / 1000;
     } else if (msg.action === 'pause') {
       markRemote('seek');
-      markRemote('seek');
+      markRemote('pause');
       if (Number.isFinite(Number(msg.position))) audio.currentTime = position / 1000;
       audio.pause();
     } else if (msg.action === 'play') {
       markRemote('seek');
-      markRemote('seek');
+      markRemote('play');
       audio.currentTime = position / 1000;
       audio.play().catch(() => toast('На этом устройстве нажмите Play: браузер блокирует удалённый запуск.'));
     }
