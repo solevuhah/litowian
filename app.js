@@ -91,6 +91,7 @@ function setTrack(url, announce = true) {
   const frame = $('sc-player');
   frame.src = 'about:blank';
   const oldAudio = $('audio-player');
+  oldAudio.onplay = oldAudio.onpause = oldAudio.onseeked = null;
   oldAudio.pause();
   oldAudio.removeAttribute('src');
   oldAudio.load();
@@ -190,12 +191,13 @@ function applyControl(msg, fromServer = false) {
       player.seekTo(position);
     } else if (msg.action === 'pause') {
       markRemote('pause');
-      if (Number.isFinite(Number(msg.position))) player.seekTo(position);
+      if (Number.isFinite(Number(msg.position))) { markRemote('seek'); player.seekTo(position); }
       player.pause();
       isPlaying = false;
       $('play-toggle').textContent = '▶';
     } else if (msg.action === 'play') {
       markRemote('play');
+      markRemote('seek');
       player.seekTo(position);
       player.play();
     }
@@ -205,10 +207,11 @@ function applyControl(msg, fromServer = false) {
       audio.currentTime = position / 1000;
     } else if (msg.action === 'pause') {
       markRemote('pause');
-      if (Number.isFinite(Number(msg.position))) audio.currentTime = position / 1000;
+      if (Number.isFinite(Number(msg.position))) { markRemote('seek'); audio.currentTime = position / 1000; }
       audio.pause();
     } else if (msg.action === 'play') {
       markRemote('play');
+      markRemote('seek');
       audio.currentTime = position / 1000;
       audio.play().catch(() => toast('На этом устройстве нажмите Play один раз: браузер блокирует удалённый автозапуск.'));
     }
@@ -334,7 +337,9 @@ $('leave').onclick = () => {
   history.replaceState({}, '', location.pathname);
   $('room').classList.add('hidden'); $('home').classList.remove('hidden');
   $('sc-player').src = 'about:blank';
-  $('audio-player').pause(); $('audio-player').removeAttribute('src');
+  const leavingAudio = $('audio-player');
+  leavingAudio.onplay = leavingAudio.onpause = leavingAudio.onseeked = null;
+  leavingAudio.pause(); leavingAudio.removeAttribute('src');
 };
 const invite = new URLSearchParams(location.search);
 if (invite.get('room')) enter(invite.get('room'), invite.get('track') || '');
