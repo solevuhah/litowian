@@ -1,251 +1,75 @@
 const $ = id => document.getElementById(id);
-
-let supa = null;
-let channel = null;
-let roomId = null;
-let player = null;
-let audioPlayer = null;
-let isApplying = false;
-let currentTrack = null;
+let socket = null, roomId = null, player = null, audio = null, applying = false, currentTrack = '';
 const sessionId = Math.random().toString(36).slice(2);
-
-const cfg = () => ({
-  url: localStorage.getItem('lt_sb_url'),
-  key: localStorage.getItem('lt_sb_key')
-});
-
-function toast(message) {
-  $('toast').textContent = message;
-  $('toast').classList.add('show');
-  setTimeout(() => $('toast').classList.remove('show'), 2400);
-}
-
-function showSettings() {
-  const c = cfg();
-  $('sb-url').value = c.url || '';
-  $('sb-key').value = c.key || '';
-  $('modal').classList.remove('hidden');
-}
-
-function connect() {
-  const c = cfg();
-  if (!c.url || !c.key || !window.supabase) {
-    showSettings();
-    return false;
-  }
-  supa = window.supabase.createClient(c.url, c.key);
-  return true;
-}
-
-function roomFromUrl() {
-  const params = new URLSearchParams(location.search);
-  return { id: params.get('room'), track: params.get('track') };
-}
-
-function updateRoomUrl(id, track) {
-  const url = new URL(location.href);
-  url.searchParams.set('room', id);
-  if (track) url.searchParams.set('track', track);
-  history.replaceState({}, '', url.pathname + url.search);
-}
-
-function isSoundCloud(url) {
-  try {
-    const host = new URL(url).hostname.toLowerCase();
-    return host === 'soundcloud.com' || host.endsWith('.soundcloud.com');
-  } catch {
-    return false;
-  }
-}
-
-function makePlayer(url) {
-  currentTrack = url;
-  $('player-placeholder').classList.add('hidden');
-  const frame = $('sc-player');
-  const audio = $('audio-player');
-  frame.style.display = 'none';
-  frame.src = 'about:blank';
-  audio.pause();
-  audio.removeAttribute('src');
-  audio.load();
-  player = null;
-  audioPlayer = null;
-
-  if (isSoundCloud(url)) {
-    frame.style.display = 'block';
-    const embed = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(url) +
-      '&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&visual=true';
-    frame.src = embed;
-    frame.onload = () => {
-      player = SC.Widget(frame);
-      player.bind(SC.Widget.Events.READY, () => {
-        player.bind(SC.Widget.Events.PLAY, () => send({ type: 'play' }));
-        player.bind(SC.Widget.Events.PAUSE, () => send({ type: 'pause' }));
-        player.bind(SC.Widget.Events.SEEK, () => player.getPosition(position => send({ type: 'seek', position })));
-        $('status').textContent = 'SoundCloud подключён · управление общее';
-      });
-    };
-    return;
-  }
-
-  audioPlayer = audio;
-  audio.style.display = 'block';
-  audio.onplay = () => send({ type: 'play' });
-  audio.onpause = () => send({ type: 'pause' });
-  audio.onseeked = () => {
-    if (!isApplying && Number.isFinite(audio.currentTime)) {
-      send({ type: 'seek', position: audio.currentTime * 1000 });
-    }
+function toast(message) { $('toast').textContent=message; $('toast').classList.add('show'); setTimeout(()=>$('toast').classList.remove('show'),2400); }
+function isSoundCloud(url) { try { const h=new URL(url).hostname.toLowerCase(); return h==='soundcloud.com'||h.endsWith('.soundcloud.com'); } catch { return false; } }
+function isDirectAudio(url) { try { return /\.(mp3|m4a|aac|ogg|oga|wav|flac)$/i.test(new URL(url).pathname); } catch { return false; } }
+function connect(room) {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  socket = new WebSocket(proto+'//'+location.host);
+  socket.onopen = () => socket.send(JSON.stringify({type:'join',room}));
+  socket.onmessage = event => {
+    const msg=JSON.parse(event.data);
+    if(msg.type==='joined') { if(msg.track && !currentTrack) setTrack(msg.track,false); $('status').textContent='Комната синхронизирована'; $('members').textContent=msg.count+' в комнате'; }
+    if(msg.type==='members') $('members').textContent=msg.count+' в комнате';
+    if(msg.type==='track') setTrack(msg.url,false);
+    if(msg.type==='control') applyControl(msg);
   };
-  audio.oncanplay = () => {
-    $('status').textContent = 'Аудиофайл готов · управление общее';
-  };
-  audio.onerror = () => {
-    $('status').textContent = 'Не удалось загрузить аудио. Нужна прямая ссылка на доступный аудиофайл.';
-  };
-  audio.src = url;
-  audio.load();
+  socket.onclose=()=>{ $('status').textContent='Связь с хостом потеряна'; };
+  socket.onerror=()=>{ $('status').textContent='Не удалось подключиться к серверу ПК'; };
 }
-
-function send(payload) {
-  if (!channel || isApplying) return;
-  channel.send({
-    type: 'broadcast',
-    event: 'control',
-    payload: { ...payload, by: sessionId, at: Date.now() }
-  });
-}
-
-async function enterRoom(id, track) {
-  if (!connect()) return;
-  if (channel) {
-    await supa.removeChannel(channel);
-    channel = null;
-  }
-  roomId = id;
-  currentTrack = track || currentTrack;
-  updateRoomUrl(id, currentTrack);
-  $('home').classList.add('hidden');
-  $('room').classList.remove('hidden');
-  $('room-name').textContent = 'Комната ' + id.slice(0, 6).toUpperCase();
-
-  if (currentTrack) {
-    $('track').value = currentTrack;
-    makePlayer(currentTrack);
+function send(data) { if(socket?.readyState===WebSocket.OPEN) socket.send(JSON.stringify(data)); }
+function setTrack(url, announce=true) {
+  currentTrack=url; player=null; audio=null;
+  $('player-placeholder').classList.add('hidden'); $('sc-player').style.display='none'; $('sc-player').src='about:blank';
+  $('audio-player').style.display='none'; $('audio-player').pause(); $('audio-player').removeAttribute('src'); $('audio-player').load();
+  $('link-player').classList.add('hidden');
+  if(announce) send({type:'track',url});
+  if(isSoundCloud(url)) {
+    const frame=$('sc-player'); frame.style.display='block';
+    frame.src='https://w.soundcloud.com/player/?url='+encodeURIComponent(url)+'&auto_play=false&hide_related=true&show_comments=false&show_user=true&visual=true';
+    frame.onload=()=>{ player=SC.Widget(frame); player.bind(SC.Widget.Events.READY,()=>{ player.bind(SC.Widget.Events.PLAY,()=>{if(!applying)send({type:'control',action:'play'});}); player.bind(SC.Widget.Events.PAUSE,()=>{if(!applying)send({type:'control',action:'pause'});}); player.bind(SC.Widget.Events.SEEK,()=>player.getPosition(p=>{if(!applying)send({type:'control',action:'seek',position:p});})); $('status').textContent='SoundCloud плеер готов'; }); };
+  } else if(isDirectAudio(url)) {
+    audio=$('audio-player'); audio.style.display='block'; audio.src=url;
+    audio.onplay=()=>{if(!applying)send({type:'control',action:'play'});};
+    audio.onpause=()=>{if(!applying)send({type:'control',action:'pause'});};
+    audio.onseeked=()=>{if(!applying)send({type:'control',action:'seek',position:audio.currentTime*1000});};
+    audio.onerror=()=>$('status').textContent='Аудиофайл недоступен в этом браузере.';
+    audio.oncanplay=()=>$('status').textContent='Аудиофайл готов';
   } else {
-    $('player-placeholder').classList.remove('hidden');
-    $('player-placeholder').querySelector('p').textContent = 'В приглашении нет источника музыки. Попросите создателя отправить новую ссылку.';
-    $('sc-player').style.display = 'none';
-    $('audio-player').style.display = 'none';
-    $('status').textContent = 'Ожидается ссылка на музыку';
+    $('link-player').classList.remove('hidden'); $('open-track').href=url;
+    $('status').textContent='Ссылка добавлена; общее управление этим сервисом не поддерживается.';
   }
-
-  channel = supa.channel('litowian-' + id, { config: { broadcast: { self: false } } });
-  channel.on('broadcast', { event: 'control' }, ({ payload }) => {
-    if (payload.by === sessionId) return;
-    const soundCloudReady = player;
-    const audioReady = audioPlayer;
-    if (!soundCloudReady && !audioReady) return;
-    isApplying = true;
-    if (payload.type === 'play') {
-      if (soundCloudReady) player.play();
-      if (audioReady) audioPlayer.play().catch(() => {
-        $('status').textContent = 'Нажмите Play, чтобы разрешить воспроизведение в этом браузере.';
-      });
-    }
-    if (payload.type === 'pause') {
-      if (soundCloudReady) player.pause();
-      if (audioReady) audioPlayer.pause();
-    }
-    if (payload.type === 'seek' && Number.isFinite(payload.position)) {
-      if (soundCloudReady) player.seekTo(payload.position);
-      if (audioReady) audioPlayer.currentTime = Math.max(0, payload.position / 1000);
-    }
-    setTimeout(() => { isApplying = false; }, 900);
-  });
-  channel.subscribe(status => {
-    $('status').textContent = status === 'SUBSCRIBED'
-      ? 'Комната синхронизирована · отправь ссылку другу'
-      : 'Подключение к комнате…';
-  });
 }
-
-$('settings').onclick = showSettings;
-$('close').onclick = () => $('modal').classList.add('hidden');
-
-$('save').onclick = async () => {
-  const url = $('sb-url').value.trim();
-  const key = $('sb-key').value.trim();
-  if (!url.startsWith('https://') || !key) {
-    toast('Проверьте URL и ключ Supabase');
-    return;
+function applyControl(msg) {
+  applying=true;
+  if(player) {
+    if(msg.action==='play') player.play();
+    if(msg.action==='pause') player.pause();
+    if(msg.action==='seek') player.seekTo(msg.position);
   }
-  localStorage.setItem('lt_sb_url', url);
-  localStorage.setItem('lt_sb_key', key);
-  $('modal').classList.add('hidden');
-  toast('Настройки сохранены');
-  if (roomId) await enterRoom(roomId, currentTrack);
-};
-
-$('create').onclick = async () => {
-  const track = $('track').value.trim();
-  let parsed;
-  try { parsed = new URL(track); } catch {}
-  if (!parsed || !['http:', 'https:'].includes(parsed.protocol) ||
-      (!isSoundCloud(track) && !/\.(mp3|m4a|aac|ogg|oga|wav|flac)(\?|#|$)/i.test(parsed.pathname + parsed.search))) {
-    toast('Вставьте SoundCloud или прямую ссылку на аудиофайл');
-    return;
+  if(audio) {
+    if(msg.action==='play') audio.play().catch(()=>toast('Нажмите Play, чтобы разрешить воспроизведение.'));
+    if(msg.action==='pause') audio.pause();
+    if(msg.action==='seek') audio.currentTime=msg.position/1000;
   }
-  if (!connect()) return;
-  await enterRoom(Math.random().toString(36).slice(2, 10), track);
-};
-
-$('join').onclick = async () => {
-  const value = prompt('Вставьте ссылку-приглашение от создателя комнаты');
-  if (!value) return;
-  try {
-    const url = new URL(value.trim());
-    const id = url.searchParams.get('room');
-    const track = url.searchParams.get('track');
-    if (!id || !track) throw new Error('missing invite details');
-    await enterRoom(id, track);
-  } catch {
-    toast('Нужна полная ссылка-приглашение, а не только код');
-  }
-};
-
-$('copy').onclick = async () => {
-  try {
-    await navigator.clipboard.writeText(location.href);
-    toast('Ссылка скопирована — отправьте другу');
-  } catch {
-    toast('Скопируйте ссылку из адресной строки');
-  }
-};
-
-$('leave').onclick = async () => {
-  if (channel && supa) await supa.removeChannel(channel);
-  channel = null;
-  roomId = null;
-  currentTrack = null;
-  player = null;
-  if (audioPlayer) {
-    audioPlayer.pause();
-    audioPlayer.removeAttribute('src');
-    audioPlayer.load();
-  }
-  audioPlayer = null;
-  history.replaceState({}, '', location.pathname);
-  $('room').classList.add('hidden');
-  $('home').classList.remove('hidden');
-  $('sc-player').style.display = 'none';
-  $('sc-player').src = 'about:blank';
-  $('audio-player').style.display = 'none';
-  $('player-placeholder').classList.remove('hidden');
-};
-
-const invite = roomFromUrl();
-if (invite.id) {
-  if (invite.track) enterRoom(invite.id, invite.track);
-  else showSettings();
+  setTimeout(()=>applying=false,700);
 }
+function enter(id,track) {
+  roomId=id; currentTrack=track||'';
+  $('home').classList.add('hidden'); $('room').classList.remove('hidden');
+  $('room-name').textContent='Комната '+id.slice(0,6).toUpperCase();
+  const u=new URL(location.href); u.searchParams.set('room',id); if(track)u.searchParams.set('track',track); history.replaceState({},'',u.pathname+u.search);
+  if(track)setTrack(track,false); connect(id);
+}
+$('create').onclick=()=>{
+  const track=$('track').value.trim(); let u;
+  try{u=new URL(track);}catch{}
+  if(!u||!['http:','https:'].includes(u.protocol)){toast('Вставьте корректную ссылку https://');return;}
+  enter(Math.random().toString(36).slice(2,10),track);
+  send({type:'track',url:track});
+};
+$('join').onclick=()=>{const value=prompt('Вставьте ссылку-приглашение');if(!value)return;try{const u=new URL(value);const id=u.searchParams.get('room');const track=u.searchParams.get('track');if(!id)throw 0;enter(id,track||'');}catch{toast('Ссылка приглашения некорректна');}};
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText(location.href);toast('Ссылка скопирована');}catch{toast('Скопируйте адресную строку');}};
+$('leave').onclick=()=>{socket?.close();socket=null;roomId=null;currentTrack='';history.replaceState({},'',location.pathname);$('room').classList.add('hidden');$('home').classList.remove('hidden');$('sc-player').src='about:blank';$('audio-player').pause();$('audio-player').removeAttribute('src');};
+const invite=new URLSearchParams(location.search); if(invite.get('room')) enter(invite.get('room'),invite.get('track')||'');
