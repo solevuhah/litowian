@@ -4,6 +4,7 @@ let supa = null;
 let channel = null;
 let roomId = null;
 let player = null;
+let audioPlayer = null;
 let isApplying = false;
 let currentTrack = null;
 const sessionId = Math.random().toString(36).slice(2);
@@ -48,23 +49,62 @@ function updateRoomUrl(id, track) {
   history.replaceState({}, '', url.pathname + url.search);
 }
 
+function isSoundCloud(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'soundcloud.com' || host.endsWith('.soundcloud.com');
+  } catch {
+    return false;
+  }
+}
+
 function makePlayer(url) {
   currentTrack = url;
   $('player-placeholder').classList.add('hidden');
   const frame = $('sc-player');
-  frame.style.display = 'block';
-  const embed = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(url) +
-    '&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&visual=true';
-  frame.src = embed;
-  frame.onload = () => {
-    player = SC.Widget(frame);
-    player.bind(SC.Widget.Events.READY, () => {
-      player.bind(SC.Widget.Events.PLAY, () => send({ type: 'play' }));
-      player.bind(SC.Widget.Events.PAUSE, () => send({ type: 'pause' }));
-      player.bind(SC.Widget.Events.SEEK, () => player.getPosition(position => send({ type: 'seek', position })));
-      $('status').textContent = 'Плеер подключён · управление общее';
-    });
-  };
+  const audio = $('audio-player');
+  frame.style.display = 'none';
+  frame.src = 'about:blank';
+  audio.pause();
+  audio.removeAttribute('src');
+  audio.load();
+  player = null;
+  audioPlayer = null;
+
+  if (isSoundCloud(url)) {
+    frame.style.display = 'block';
+    const embed = 'https://w.soundcloud.com/player/?url=' + encodeURIComponent(url) +
+      '&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&visual=true';
+    frame.src = embed;
+    frame.onload = () => {
+      player = SC.Widget(frame);
+      player.bind(SC.Widget.Events.READY, () => {
+        player.bind(SC.Widget.Events.PLAY, () => send({ type: 'play' }));
+        player.bind(SC.Widget.Events.PAUSE, () => send({ type: 'pause' }));
+        player.bind(SC.Widget.Events.SEEK, () => player.getPosition(position => send({ type: 'seek', position })));
+        $('status').textContent = 'SoundCloud подключён · управление общее';
+      });
+    };
+    return;
+  }
+
+  audioPlayer = audio;
+  audio.style.display = 'block';
+  audio.src = url;
+  audio.load();
+  audio.addEventListener('play', () => send({ type: 'play' }));
+  audio.addEventListener('pause', () => send({ type: 'pause' }));
+  audio.addEventListener('seeked', () => {
+    if (!isApplying && Number.isFinite(audio.currentTime)) {
+      send({ type: 'seek', position: audio.currentTime * 1000 });
+    }
+  });
+  audio.addEventListener('canplay', () => {
+    $('status').textContent = 'Аудиофайл готов · управление общее';
+  }, { once: true });
+  audio.addEventListener('error', () => {
+    $('status').textContent = 'Не удалось загрузить аудио. Нужна прямая ссылка на доступный аудиофайл.';
+  }, { once: true });
 }
 
 function send(payload) {
@@ -94,19 +134,34 @@ async function enterRoom(id, track) {
     makePlayer(currentTrack);
   } else {
     $('player-placeholder').classList.remove('hidden');
-    $('player-placeholder').querySelector('p').textContent = 'В приглашении нет трека. Попросите создателя отправить новую ссылку.';
+    $('player-placeholder').querySelector('p').textContent = 'В приглашении нет источника музыки. Попросите создателя отправить новую ссылку.';
     $('sc-player').style.display = 'none';
-    $('status').textContent = 'Ожидается ссылка с треком';
+    $('audio-player').style.display = 'none';
+    $('status').textContent = 'Ожидается ссылка на музыку';
   }
 
   channel = supa.channel('litowian-' + id, { config: { broadcast: { self: false } } });
   channel.on('broadcast', { event: 'control' }, ({ payload }) => {
-    if (payload.by === sessionId || !player) return;
+    if (payload.by === sessionId) return;
+    const soundCloudReady = player;
+    const audioReady = audioPlayer;
+    if (!soundCloudReady && !audioReady) return;
     isApplying = true;
-    if (payload.type === 'play') player.play();
-    if (payload.type === 'pause') player.pause();
-    if (payload.type === 'seek' && Number.isFinite(payload.position)) player.seekTo(payload.position);
-    setTimeout(() => { isApplying = false; }, 700);
+    if (payload.type === 'play') {
+      if (soundCloudReady) player.play();
+      if (audioReady) audioPlayer.play().catch(() => {
+        $('status').textContent = 'Нажмите Play, чтобы разрешить воспроизведение в этом браузере.';
+      });
+    }
+    if (payload.type === 'pause') {
+      if (soundCloudReady) player.pause();
+      if (audioReady) audioPlayer.pause();
+    }
+    if (payload.type === 'seek' && Number.isFinite(payload.position)) {
+      if (soundCloudReady) player.seekTo(payload.position);
+      if (audioReady) audioPlayer.currentTime = Math.max(0, payload.position / 1000);
+    }
+    setTimeout(() => { isApplying = false; }, 900);
   });
   channel.subscribe(status => {
     $('status').textContent = status === 'SUBSCRIBED'
@@ -134,8 +189,11 @@ $('save').onclick = async () => {
 
 $('create').onclick = async () => {
   const track = $('track').value.trim();
-  if (!/^https?:\/\/(www\.)?soundcloud\.com\//i.test(track)) {
-    toast('Вставьте публичную ссылку SoundCloud');
+  let parsed;
+  try { parsed = new URL(track); } catch {}
+  if (!parsed || !['http:', 'https:'].includes(parsed.protocol) ||
+      (!isSoundCloud(track) && !/\.(mp3|m4a|aac|ogg|oga|wav|flac)(\?|#|$)/i.test(parsed.pathname + parsed.search))) {
+    toast('Вставьте SoundCloud или прямую ссылку на аудиофайл');
     return;
   }
   if (!connect()) return;
@@ -171,11 +229,18 @@ $('leave').onclick = async () => {
   roomId = null;
   currentTrack = null;
   player = null;
+  if (audioPlayer) {
+    audioPlayer.pause();
+    audioPlayer.removeAttribute('src');
+    audioPlayer.load();
+  }
+  audioPlayer = null;
   history.replaceState({}, '', location.pathname);
   $('room').classList.add('hidden');
   $('home').classList.remove('hidden');
   $('sc-player').style.display = 'none';
   $('sc-player').src = 'about:blank';
+  $('audio-player').style.display = 'none';
   $('player-placeholder').classList.remove('hidden');
 };
 
