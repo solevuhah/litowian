@@ -43,6 +43,7 @@ wss.on('connection', ws => {
       return;
     }
     if (!roomId || !rooms.has(roomId)) return;
+    const room = rooms.get(roomId);
     if (msg.type === 'chat' && typeof msg.text === 'string') {
       const text = msg.text.trim().slice(0, 500);
       const nick = (typeof msg.nick === 'string' ? msg.nick : 'Гость').trim().slice(0, 24) || 'Гость';
