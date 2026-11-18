@@ -1,6 +1,8 @@
 const $ = id => document.getElementById(id);
-let socket = null, roomId = null, player = null, audio = null, currentTrack = '';
+let socket = null, roomId = null, player = null, audio = null, currentTrack = '', playbackPoll = null;
+let lastPausedState = null, expectedRemotePaused = null, widgetPollBusy = false;
 const suppressEcho = Object.create(null);
+function stopPlaybackPoll() { if(playbackPoll) clearInterval(playbackPoll); playbackPoll=null; lastPausedState=null; expectedRemotePaused=null; widgetPollBusy=false; }
 function markRemote(action) { suppressEcho[action] = Date.now() + 1800; }
 function isRemoteEcho(action) { if ((suppressEcho[action] || 0) > Date.now()) { delete suppressEcho[action]; return true; } delete suppressEcho[action]; return false; }
 function toast(message) { $('toast').textContent=message; $('toast').classList.add('show'); setTimeout(()=>$('toast').classList.remove('show'),2400); }
@@ -28,7 +30,7 @@ function connect(room) {
 }
 function send(data) { if(socket?.readyState===WebSocket.OPEN) socket.send(JSON.stringify(data)); }
 function setTrack(url, announce=true) {
-  currentTrack=url; player=null; audio=null;
+  stopPlaybackPoll(); currentTrack=url; player=null; audio=null;
   $('player-placeholder').classList.add('hidden'); $('sc-player').style.display='none'; $('sc-player').src='about:blank';
   $('audio-player').style.display='none'; $('audio-player').pause(); $('audio-player').removeAttribute('src'); $('audio-player').load();
   $('link-player').classList.add('hidden');
@@ -39,19 +41,37 @@ function setTrack(url, announce=true) {
     frame.onload=()=>{
       const widget=SC.Widget(frame);
       player=widget;
-      const relay=(action,position)=>{
-        if(player!==widget || isRemoteEcho(action)) return;
-        send(position===undefined ? {type:'control',action} : {type:'control',action,position});
-      };
       widget.bind(SC.Widget.Events.READY,()=>{
         if(player!==widget) return;
-        widget.bind(SC.Widget.Events.PLAY,()=>relay('play'));
-        widget.bind(SC.Widget.Events.PAUSE,()=>relay('pause'));
-        widget.bind(SC.Widget.Events.SEEK,event=>relay('seek',event?.currentPosition));
-        widget.bind(SC.Widget.Events.FINISH,()=>relay('pause'));
+        widget.bind(SC.Widget.Events.SEEK,event=>{
+          if(!isRemoteEcho('seek')) send({type:'control',action:'seek',position:event?.currentPosition||0});
+        });
+        widget.isPaused(paused=>{
+          if(player!==widget) return;
+          lastPausedState=!!paused;
+          playbackPoll=setInterval(()=>{
+            if(player!==widget || widgetPollBusy) return;
+            widgetPollBusy=true;
+            widget.isPaused(nowPaused=>{
+              widgetPollBusy=false;
+              if(player!==widget) return;
+              nowPaused=!!nowPaused;
+              if(lastPausedState===null){lastPausedState=nowPaused;return;}
+              if(nowPaused===lastPausedState) return;
+              lastPausedState=nowPaused;
+              if(expectedRemotePaused && nowPaused===expectedRemotePaused.state && Date.now()<=expectedRemotePaused.expires){
+                expectedRemotePaused=null;
+                return;
+              }
+              if(expectedRemotePaused && Date.now()>expectedRemotePaused.expires) expectedRemotePaused=null;
+              send({type:'control',action:nowPaused?'pause':'play'});
+            });
+          },300);
+        });
         $('status').textContent='SoundCloud плеер готов';
       });
     };
+    frame.src='https://w.soundcloud.com/player/?url='+encodeURIComponent(url)+'&auto_play=false&hide_related=true&show_comments=false&show_user=true&visual=true';
   } else if(isDirectAudio(url)) {
     audio=$('audio-player'); audio.style.display='block'; audio.src=url;
     audio.onplay=()=>{if(!isRemoteEcho('play'))send({type:'control',action:'play'});};
@@ -66,13 +86,14 @@ function setTrack(url, announce=true) {
 }
 function applyControl(msg) {
   if(!['play','pause','seek'].includes(msg.action)) return;
-  markRemote(msg.action);
   if(player) {
+    if(msg.action==='play' || msg.action==='pause') expectedRemotePaused={state:msg.action==='pause',expires:Date.now()+2500};
     if(msg.action==='play') player.play();
     if(msg.action==='pause') player.pause();
     if(msg.action==='seek') player.seekTo(Math.max(0,Number(msg.position)||0));
   }
   if(audio) {
+    if(msg.action==='play' || msg.action==='pause') markRemote(msg.action);
     if(msg.action==='play') audio.play().catch(()=>toast('Нажмите Play, чтобы разрешить воспроизведение.'));
     if(msg.action==='pause') audio.pause();
     if(msg.action==='seek') audio.currentTime=Math.max(0,Number(msg.position)||0)/1000;
