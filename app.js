@@ -1,6 +1,14 @@
 const $ = id => document.getElementById(id);
 let socket = null, roomId = null, player = null, audio = null, currentTrack = '';
 const remoteSuppress = Object.create(null);
+function toast(message) {
+  const node = $('toast');
+  if (!node) { alert(message); return; }
+  node.textContent = message;
+  node.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => node.classList.remove('show'), 2400);
+}
 let widgetReady = false, pendingControl = null;
 function markRemote(action) {
   remoteSuppress[action] = Date.now() + 1400;
