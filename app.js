@@ -1,6 +1,5 @@
 const $ = id => document.getElementById(id);
 let socket = null, roomId = null, player = null, audio = null, applying = false, currentTrack = '';
-const sessionId = Math.random().toString(36).slice(2);
 function toast(message) { $('toast').textContent=message; $('toast').classList.add('show'); setTimeout(()=>$('toast').classList.remove('show'),2400); }
 function isSoundCloud(url) { try { const h=new URL(url).hostname.toLowerCase(); return h==='soundcloud.com'||h.endsWith('.soundcloud.com'); } catch { return false; } }
 function isDirectAudio(url) { try { return /\.(mp3|m4a|aac|ogg|oga|wav|flac)$/i.test(new URL(url).pathname); } catch { return false; } }
@@ -119,16 +118,5 @@ function sendChat() {
 }
 $('chat-send').onclick=sendChat;
 $('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter')sendChat();});
-$('sc-search-btn').onclick=()=>{
-  const q=$('sc-search').value.trim();
-  if(!q){toast('Введи название трека или исполнителя');return;}
-  window.open('https://soundcloud.com/search?q='+encodeURIComponent(q),'_blank','noopener');
-};
-$('load-track').onclick=()=>{
-  const url=$('room-track-url').value.trim();
-  try { const u=new URL(url); if(!['http:','https:'].includes(u.protocol)||!isSoundCloud(url)) throw 0; }
-  catch { toast('Вставь корректную ссылку на SoundCloud');return; }
-  setTrack(url,true); $('status').textContent='Трек отправлен всем участникам';
-};
 $('leave').onclick=()=>{socket?.close();socket=null;roomId=null;currentTrack='';history.replaceState({},'',location.pathname);$('room').classList.add('hidden');$('home').classList.remove('hidden');$('sc-player').src='about:blank';$('audio-player').pause();$('audio-player').removeAttribute('src');};
 const invite=new URLSearchParams(location.search); if(invite.get('room')) enter(invite.get('room'),invite.get('track')||'');
