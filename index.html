@@ -1,51 +1,14 @@
 <!doctype html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#050505">
-<meta name="description" content="litowian — слушайте музыку вместе.">
-<title>litowian — listen together</title>
-<link rel="stylesheet" href="./style.css">
-</head>
-<body>
-<main class="shell">
-<header class="top"><a class="brand" href="./">litowian<span>.</span></a><span class="eyebrow">L I T O W I A N / 001</span></header>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#09090b"><meta name="description" content="litowian — слушайте музыку вместе."><title>litowian — listen together</title><link rel="stylesheet" href="./style.css"></head>
+<body><main class="shell"><header class="top"><a class="brand" href="./">litowian<span>.</span></a><span class="eyebrow">L I T O W I A N  /  001</span></header>
 <section class="hero"><div class="eyebrow"><i></i> LISTEN TOGETHER</div><h1>SOUND<br><em>IN SYNC.</em></h1><p class="sub">PRIVATE LISTENING SPACE — EST. 2021</p></section>
-<section class="panel" id="home">
-<label for="track">ССЫЛКА НА ТРЕК</label>
-<div class="track-row"><input id="track" type="url" placeholder="SoundCloud или прямая ссылка на аудио"><button id="create" class="primary">Создать комнату ↗</button></div>
-<p class="input-hint">SoundCloud воспроизводится через официальный виджет; управление и прогресс — интерфейс litowian.</p>
-<div class="join-row"><span>Уже есть приглашение?</span><button id="join" class="text-btn">Войти по ссылке</button></div>
+<section class="panel" id="home"><label for="track">ССЫЛКА НА ТРЕК</label><div class="track-row"><input id="track" type="url" placeholder="SoundCloud или прямая ссылка на аудио"><button id="create" class="primary">Создать комнату ↗</button></div><p class="input-hint">SoundCloud синхронизирует Play/Pause/перемотку через официальный плеер, если он доступен обоим. YouTube и Spotify пока открываются как ссылки/встроенные плееры без общего управления.</p><div class="join-row"><span>Уже есть приглашение?</span><button id="join" class="text-btn">Войти по ссылке</button></div></section>
+<section class="room panel hidden" id="room"><div class="room-head"><div><div class="eyebrow">YOUR LISTENING ROOM</div><h2 id="room-name">Комната</h2></div><button id="copy" class="copy">↗ Отправить приглашение</button></div><div class="invite-box"><label for="invite-link">ССЫЛКА ДЛЯ ДРУГОГО УЧАСТНИКА</label><input id="invite-link" type="text" readonly value="Подготовка ссылки…"><p>Нажми «Отправить приглашение»: на телефоне откроется меню отправки, на ПК ссылка скопируется — вставь её в чат.</p></div><div class="player-wrap"><div id="player-placeholder"><div class="disc">♫</div><p>Загрузка плеера…</p></div><iframe id="sc-player" allow="autoplay" scrolling="no" frameborder="no" src="about:blank"></iframe><audio id="audio-player" controls preload="metadata"></audio><div id="link-player" class="link-player hidden"><p>Этот сервис пока нельзя управлять синхронно из браузера.</p><a id="open-track" target="_blank" rel="noopener noreferrer">Открыть трек ↗</a></div></div><section class="chat panel">
+  <div class="chat-head"><div><div class="eyebrow">ROOM CHAT</div><h2>Общение</h2></div><span id="chat-count" class="chat-count">0 сообщений</span></div>
+  <label for="nickname">ТВОЙ НИК</label><input id="nickname" maxlength="24" placeholder="Например, moon">
+  <div id="chat-messages" class="chat-messages" aria-live="polite"><p class="chat-empty">Сообщений пока нет. Начните общаться ✨</p></div>
+  <div class="chat-compose"><input id="chat-input" maxlength="500" placeholder="Написать сообщение…" autocomplete="off"><button id="chat-send" class="primary">➤</button></div>
 </section>
-<section class="room panel hidden" id="room">
-<div class="room-head"><div><div class="eyebrow">YOUR LISTENING ROOM</div><h2 id="room-name">Комната</h2></div><button id="copy" class="copy">↗ Отправить приглашение</button></div>
-<div class="invite-box"><label for="invite-link">ССЫЛКА ДЛЯ ДРУГОГО УЧАСТНИКА</label><input id="invite-link" type="text" readonly value="Подготовка ссылки…"><p>Нажми «Отправить приглашение»: на телефоне откроется меню отправки, на ПК ссылка скопируется.</p></div>
-<div class="player-wrap">
-<div id="player-placeholder"><div class="disc">♫</div><p>Загрузка плеера…</p></div>
-<div id="custom-player" class="custom-player hidden">
-<img id="track-art" class="track-art" alt="Обложка трека">
-<div class="track-meta"><div id="track-title" class="track-title">Загрузка трека…</div><div id="track-artist" class="track-artist"></div></div>
-<div class="progress-row"><span id="elapsed">0:00</span><input id="progress" type="range" min="0" max="1000" value="0" aria-label="Позиция трека"><span id="duration">0:00</span></div>
-<div class="controls"><button id="backward" class="skip" aria-label="Назад на 10 секунд">←</button><button id="play-toggle" class="play-toggle" aria-label="Play или Pause">▶</button><button id="forward" class="skip" aria-label="Вперёд на 10 секунд">→</button></div>
-<div class="attribution"><span>LISTENING VIA</span><a id="soundcloud-source" href="https://soundcloud.com/" target="_blank" rel="noopener noreferrer"><img src="https://developers.soundcloud.com/assets/logo_big_white-a38cb93cd8fa05a93183280f295e13aff1a4ae0945ca2fb0efbe85b82588431e.png" alt="SoundCloud"></a></div>
-</div>
-<div class="source-label">SOUNDCLOUD PLAYER · BACKUP CONTROLS</div><iframe id="sc-player" title="Official SoundCloud player" allow="autoplay" scrolling="no" frameborder="no" src="about:blank"></iframe>
-<audio id="audio-player" preload="metadata"></audio>
-<div id="link-player" class="link-player hidden"><p>Этот сервис пока нельзя управлять синхронно из браузера.</p><a id="open-track" target="_blank" rel="noopener noreferrer">Открыть трек ↗</a></div>
-</div>
-<section class="chat panel">
-<div class="chat-head"><div><div class="eyebrow">ROOM CHAT</div><h2>Общение</h2></div><span id="chat-count" class="chat-count">0 сообщений</span></div>
-<label for="nickname">ТВОЙ НИК</label><input id="nickname" maxlength="24" placeholder="Например, moon">
-<div id="chat-messages" class="chat-messages" aria-live="polite"><p class="chat-empty">Сообщений пока нет. Начните общаться ✨</p></div>
-<div class="chat-compose"><input id="chat-input" maxlength="500" placeholder="Написать сообщение…" autocomplete="off"><button id="chat-send" class="primary">➤</button></div>
-</section>
-<div class="status" id="status">Подключение…</div><div class="members"><span class="dot"></span><span id="members">Подключение участников…</span></div><button id="leave" class="text-btn leave">Покинуть комнату</button>
-</section>
-<footer><span>MADE FOR TWO, LITOWIAN.</span><span>PC-hosted · Realtime</span></footer>
-</main>
-<div class="toast" id="toast"></div>
-<script src="https://w.soundcloud.com/player/api.js"></script>
-<script src="./app.js"></script>
-</body>
-</html>
+<div class="status" id="status">Подключение…</div><div class="members"><span class="dot"></span><span id="members">Подключение участников…</span></div><button id="leave" class="text-btn leave">Покинуть комнату</button></section>
+<footer><span>MADE FOR TWO, LITOWIAN.</span><span>PC-hosted · Realtime</span></footer></main>
+<div class="toast" id="toast"></div><script src="https://w.soundcloud.com/player/api.js"></script><script src="./app.js"></script></body></html>
