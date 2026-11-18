@@ -33,7 +33,21 @@ function setTrack(url, announce=true) {
   if(isSoundCloud(url)) {
     const frame=$('sc-player'); frame.style.display='block';
     frame.src='https://w.soundcloud.com/player/?url='+encodeURIComponent(url)+'&auto_play=false&hide_related=true&show_comments=false&show_user=true&visual=true';
-    frame.onload=()=>{ player=SC.Widget(frame); player.bind(SC.Widget.Events.READY,()=>{ player.bind(SC.Widget.Events.PLAY,()=>{if(!applying)send({type:'control',action:'play'});}); player.bind(SC.Widget.Events.PAUSE,()=>{if(!applying)send({type:'control',action:'pause'});}); player.bind(SC.Widget.Events.SEEK,()=>player.getPosition(p=>{if(!applying)send({type:'control',action:'seek',position:p});})); $('status').textContent='SoundCloud плеер готов'; }); };
+    const widget=SC.Widget(frame);
+    player=widget;
+    const relay=(action,position)=>{
+      if(player!==widget) return;
+      if(applying){ applying=false; return; }
+      send(position===undefined ? {type:'control',action} : {type:'control',action,position});
+    };
+    widget.bind(SC.Widget.Events.READY,()=>{
+      if(player!==widget) return;
+      widget.bind(SC.Widget.Events.PLAY,()=>relay('play'));
+      widget.bind(SC.Widget.Events.PAUSE,()=>relay('pause'));
+      widget.bind(SC.Widget.Events.SEEK,event=>relay('seek',event?.currentPosition));
+      widget.bind(SC.Widget.Events.FINISH,()=>relay('pause'));
+      $('status').textContent='SoundCloud плеер готов';
+    });
   } else if(isDirectAudio(url)) {
     audio=$('audio-player'); audio.style.display='block'; audio.src=url;
     audio.onplay=()=>{if(!applying)send({type:'control',action:'play'});};
@@ -58,7 +72,7 @@ function applyControl(msg) {
     if(msg.action==='pause') audio.pause();
     if(msg.action==='seek') audio.currentTime=msg.position/1000;
   }
-  setTimeout(()=>applying=false,700);
+  setTimeout(()=>{applying=false;},1200);
 }
 function inviteUrl() {
   if(location.hostname==='localhost'||location.hostname==='127.0.0.1'||location.hostname==='::1') return null;
