@@ -71,12 +71,14 @@ wss.on('connection', ws => {
     } else if (msg.type === 'control' && ['play','pause','seek'].includes(msg.action)) {
       const position = Number(msg.position);
       const safePosition = Number.isFinite(position) ? Math.max(0, Math.min(position, 24 * 60 * 60 * 1000)) : room.playback.position;
-      room.playback = {
-        action:msg.action,
-        position:safePosition,
-        updatedAt:Date.now()
-      };
-      broadcast(roomId, { type:'control', ...room.playback }, ws);
+      const updatedAt = Date.now();
+      if (msg.action === 'seek') {
+        room.playback = { ...room.playback, position:safePosition, updatedAt };
+        broadcast(roomId, { type:'control', action:'seek', position:safePosition, updatedAt }, ws);
+      } else {
+        room.playback = { action:msg.action, position:safePosition, updatedAt };
+        broadcast(roomId, { type:'control', ...room.playback }, ws);
+      }
     }
   });
   ws.on('close', () => {
