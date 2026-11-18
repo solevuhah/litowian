@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 let socket = null, roomId = null, player = null, audio = null, currentTrack = '';
 const remoteSuppress = Object.create(null);
+let widgetReady = false, pendingControl = null;
 function markRemote(action) {
   remoteSuppress[action] = Date.now() + 1400;
 }
@@ -43,6 +44,8 @@ function bindWidgetEvents(widget, url) {
   const E = SC.Widget.Events;
   widget.bind(E.READY, () => {
     if (player !== widget || currentTrack !== url) return;
+    widgetReady = true;
+    if (pendingControl) { const queued = pendingControl; pendingControl = null; applyControl(queued, true); }
     widget.bind(E.PLAY, () => {
       if (player !== widget || consumeRemote('play')) return;
       widget.getPosition(position => {
@@ -69,6 +72,8 @@ function setTrack(url, announce = true) {
   currentTrack = url;
   player = null;
   audio = null;
+  widgetReady = false;
+  pendingControl = null;
   $('player-placeholder').classList.add('hidden');
   $('sc-player').style.display = 'none';
   $('sc-player').src = 'about:blank';
@@ -113,6 +118,7 @@ function applyControl(msg, initial = false) {
     position += Math.max(0, Date.now() - Number(msg.updatedAt));
   }
   if (player) {
+    if (!widgetReady) { pendingControl = msg; return; }
     const widget = player;
     if (msg.action === 'seek') {
       markRemote('seek');
