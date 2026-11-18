@@ -51,7 +51,7 @@ wss.on('connection', ws => {
       const room = rooms.get(roomId);
       room.messages.push(message);
       if (room.messages.length > 60) room.messages.shift();
-      broadcast(roomId, message);
+      broadcast(roomId, message, ws);
       ws.send(JSON.stringify(message));
     } else if (msg.type === 'track' && typeof msg.url === 'string' && msg.url.length <= 2048) {
       rooms.get(roomId).track = msg.url;
