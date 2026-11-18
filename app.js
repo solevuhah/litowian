@@ -10,6 +10,16 @@ function consumeRemote(action) {
   delete remoteSuppress[action];
   return until >= Date.now();
 }
+function isSoundCloud(url) {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'soundcloud.com' || host.endsWith('.soundcloud.com');
+  } catch { return false; }
+}
+function isDirectAudio(url) {
+  try { return /\.(mp3|m4a|aac|ogg|oga|wav|flac)$/i.test(new URL(url).pathname); }
+  catch { return false; }
+}
 function connect(room) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   socket = new WebSocket(proto + '//' + location.host);
@@ -175,18 +185,30 @@ $('create').onclick=()=>{
   send({type:'track',url:track});
 };
 $('join').onclick=()=>{const value=prompt('Вставьте ссылку-приглашение');if(!value)return;try{const u=new URL(value);const id=u.searchParams.get('room');const track=u.searchParams.get('track');if(!id)throw 0;enter(id,track||'');}catch{toast('Ссылка приглашения некорректна');}};
-async function shareInvite() {
+async function copyInvite() {
   const url=inviteUrl();
-  if(!url){toast('Открой комнату по публичной HTTPS-ссылке, не через localhost');return;}
+  if(!url){toast('Открой сайт через публичную HTTPS-ссылку, не через localhost');return;}
   refreshInvite();
-  if(navigator.share) {
-    try { await navigator.share({title:'Приглашение в litowian',text:'Заходи слушать музыку вместе:',url}); return; }
-    catch(e) { if(e.name==='AbortError') return; }
+  try {
+    if(navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(url);
+      toast('Ссылка скопирована');
+    } else {
+      const field=$('invite-link');
+      field.value=url;
+      field.focus();
+      field.select();
+      const copied=document.execCommand('copy');
+      toast(copied ? 'Ссылка скопирована' : 'Ссылка выделена — скопируй её');
+    }
+  } catch {
+    const field=$('invite-link');
+    field.focus();
+    field.select();
+    toast('Ссылка выделена — скопируй её');
   }
-  try { await navigator.clipboard.writeText(url); toast('Ссылка скопирована — вставь её в чат'); }
-  catch { $('invite-link').focus(); $('invite-link').select(); toast('Ссылка выделена — скопируй и отправь в чат'); }
 }
-$('copy').onclick=shareInvite;
+$('copy').onclick=copyInvite;
 function renderChatMessage(msg) {
   const box=$('chat-messages');
   const empty=box.querySelector('.chat-empty'); if(empty) empty.remove();
