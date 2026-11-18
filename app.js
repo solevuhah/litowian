@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 let socket = null, roomId = null, player = null, audio = null, currentTrack = '';
-const remoteSuppress = Object.create(null);
+let remoteEventsMutedUntil = 0;
 function toast(message) {
   const node = $('toast');
   if (!node) { alert(message); return; }
@@ -10,13 +10,13 @@ function toast(message) {
   toast.timer = setTimeout(() => node.classList.remove('show'), 2400);
 }
 let widgetReady = false, pendingControl = null;
-function markRemote(action) {
-  remoteSuppress[action] = Date.now() + 1400;
+// SoundCloud can emit several secondary events for one remote seek/play/pause.
+// Mute the whole event burst, not just one event of each type.
+function markRemote() {
+  remoteEventsMutedUntil = Date.now() + 2200;
 }
-function consumeRemote(action) {
-  const until = remoteSuppress[action] || 0;
-  delete remoteSuppress[action];
-  return until >= Date.now();
+function isRemoteEvent() {
+  return Date.now() < remoteEventsMutedUntil;
 }
 function isSoundCloud(url) {
   try {
@@ -65,19 +65,19 @@ function bindWidgetEvents(widget, url) {
     widgetReady = true;
     if (pendingControl) { const queued = pendingControl; pendingControl = null; applyControl(queued, true); }
     widget.bind(E.PLAY, () => {
-      if (player !== widget || consumeRemote('play')) return;
+      if (player !== widget || isRemoteEvent()) return;
       widget.getPosition(position => {
         if (player === widget) sendWidgetControl('play', Number(position) || 0);
       });
     });
     widget.bind(E.PAUSE, () => {
-      if (player !== widget || consumeRemote('pause')) return;
+      if (player !== widget || isRemoteEvent()) return;
       widget.getPosition(position => {
         if (player === widget) sendWidgetControl('pause', Number(position) || 0);
       });
     });
     widget.bind(E.SEEK, event => {
-      if (player !== widget || consumeRemote('seek')) return;
+      if (player !== widget || isRemoteEvent()) return;
       sendWidgetControl('seek', Number(event?.currentPosition) || 0);
     });
     widget.bind(E.ERROR, () => {
@@ -118,9 +118,9 @@ function setTrack(url, announce = true) {
     audio = $('audio-player');
     audio.style.display = 'block';
     audio.src = url;
-    audio.onplay = () => { if (!consumeRemote('play')) sendWidgetControl('play', audio.currentTime * 1000); };
-    audio.onpause = () => { if (!consumeRemote('pause')) sendWidgetControl('pause', audio.currentTime * 1000); };
-    audio.onseeked = () => { if (!consumeRemote('seek')) sendWidgetControl('seek', audio.currentTime * 1000); };
+    audio.onplay = () => { if (!isRemoteEvent()) sendWidgetControl('play', audio.currentTime * 1000); };
+    audio.onpause = () => { if (!isRemoteEvent()) sendWidgetControl('pause', audio.currentTime * 1000); };
+    audio.onseeked = () => { if (!isRemoteEvent()) sendWidgetControl('seek', audio.currentTime * 1000); };
     audio.onerror = () => $('status').textContent = 'Аудиофайл недоступен в этом браузере.';
     audio.oncanplay = () => $('status').textContent = 'Аудиофайл готов';
   } else {
@@ -139,31 +139,31 @@ function applyControl(msg, initial = false) {
     if (!widgetReady) { pendingControl = msg; return; }
     const widget = player;
     if (msg.action === 'seek') {
-      markRemote('seek');
+      markRemote();
       widget.seekTo(position);
     } else if (msg.action === 'pause') {
-      markRemote('seek');
-      markRemote('pause');
+      markRemote();
+      markRemote();
       if (Number.isFinite(Number(msg.position))) widget.seekTo(position);
       widget.pause();
     } else if (msg.action === 'play') {
-      markRemote('seek');
-      markRemote('play');
+      markRemote();
+      markRemote();
       widget.seekTo(position);
       widget.play();
     }
   } else if (audio) {
     if (msg.action === 'seek') {
-      markRemote('seek');
+      markRemote();
       audio.currentTime = position / 1000;
     } else if (msg.action === 'pause') {
-      markRemote('seek');
-      markRemote('pause');
+      markRemote();
+      markRemote();
       if (Number.isFinite(Number(msg.position))) audio.currentTime = position / 1000;
       audio.pause();
     } else if (msg.action === 'play') {
-      markRemote('seek');
-      markRemote('play');
+      markRemote();
+      markRemote();
       audio.currentTime = position / 1000;
       audio.play().catch(() => toast('На этом устройстве нажмите Play: браузер блокирует удалённый запуск.'));
     }
